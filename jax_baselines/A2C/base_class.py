@@ -8,13 +8,13 @@ from gymnasium import spaces
 from mlagents_envs.environment import ActionTuple, UnityEnvironment
 from tqdm.auto import trange
 
+from jax_baselines.A2C.transition_buffer import EpochBuffer
 from jax_baselines.common.base_classes import (
     TensorboardWriter,
     restore,
     save,
     select_optimizer,
 )
-from jax_baselines.common.cpprb_buffers import EpochBuffer
 from jax_baselines.common.utils import add_hparams, convert_jax, convert_states, key_gen
 from jax_baselines.common.worker import gymMultiworker
 
@@ -52,6 +52,7 @@ class Actor_Critic_Policy_Gradient_Family(object):
         self.ent_coef = ent_coef
         self.tensorboard_log = tensorboard_log
         self.full_tensorboard_log = full_tensorboard_log
+        self.hidden_space = []
 
         self.params = None
         self.save_path = None
@@ -69,6 +70,7 @@ class Actor_Critic_Policy_Gradient_Family(object):
         self.buffer = EpochBuffer(
             self.batch_size,
             self.observation_space,
+            self.hidden_space,
             self.worker_size,
             [1] if self.action_type == "discrete" else self.action_size,
         )

@@ -11,4 +11,4 @@ OPTIONS="--val_coef 0.6 --gae_normalize"
 
 OPTIMIZER="--optimizer rmsprop"
 
-python run_pg.py --algo PPO $ENV $TRAIN $MODEL $OPTIONS $OPTIMIZER
+python run_pg.py --algo A2C $ENV $TRAIN $MODEL $OPTIONS $OPTIMIZER

@@ -92,70 +92,67 @@ class A2C(Actor_Critic_Policy_Gradient_Family):
         opt_state,
         key,
         obses,
+        states,
         actions,
         rewards,
-        nxtobses,
-        dones,
+        ep_idx,
         terminals,
     ):
-        obses = [jnp.stack(zo) for zo in zip(*obses)]
-        nxtobses = [jnp.stack(zo) for zo in zip(*nxtobses)]
-        actions = jnp.stack(actions)
-        rewards = jnp.stack(rewards)
-        dones = jnp.stack(dones)
-        terminals = jnp.stack(terminals)
-        obses = convert_jax(obses)
-        nxtobses = convert_jax(nxtobses)
+        obses = [jnp.stack(zo) for zo in zip(*obses)]  # (worker, n + 1, *obs_shape)
+        states = [jnp.stack(s) for s in zip(*states)]  # (worker, n + 1, *state_shape)
+        actions = jnp.stack(actions)  # (worker, n)
+        rewards = jnp.stack(rewards)  # (worker, n)
+        ep_idx = jnp.stack(ep_idx)  # (worker, n+1)
+        filled = jnp.not_equal(ep_idx[:, :-1], -1).astype(jnp.float32)  # (worker, n)
+        dones = jnp.not_equal(ep_idx[:, 1:], ep_idx[:, :-1])  # (worker, n)
+        terminals = jnp.stack(terminals)  # (worker, n)
+        obses = convert_jax(obses)  # (worker, n + 1, *obs_shape)
         value = jax.vmap(self.critic, in_axes=(None, None, 0))(
             params,
             key,
             jax.vmap(self.preproc, in_axes=(None, None, 0))(params, key, obses),
         )
-        next_value = jax.vmap(self.critic, in_axes=(None, None, 0))(
-            params,
-            key,
-            jax.vmap(self.preproc, in_axes=(None, None, 0))(params, key, nxtobses),
-        )
         targets = jax.vmap(discount_with_terminal, in_axes=(0, 0, 0, 0, None))(
-            rewards, dones, terminals, next_value, self.gamma
+            rewards, dones, terminals, value[:, 1:], self.gamma
         )
-        obses = [jnp.vstack(o) for o in obses]
+        obses = [jnp.vstack(o[:, :-1]) for o in obses]
         actions = jnp.vstack(actions)
-        value = jnp.vstack(value)
+        value = jnp.vstack(value[:, :-1])
         targets = jnp.vstack(targets)
+        filled = jnp.vstack(filled)
         adv = targets - value
         (total_loss, (critic_loss, actor_loss, entropy_loss)), grad = jax.value_and_grad(
             self._loss, has_aux=True
-        )(params, obses, actions, targets, adv, key)
+        )(params, obses, actions, targets, adv, filled, key)
         updates, opt_state = self.optimizer.update(grad, opt_state, params=params)
         params = optax.apply_updates(params, updates)
         return params, opt_state, critic_loss, actor_loss, entropy_loss, jnp.mean(targets)
 
-    def _loss_discrete(self, params, obses, actions, targets, adv, key):
+    def _loss_discrete(self, params, obses, actions, targets, adv, filled, key):
         feature = self.preproc(params, key, obses)
         vals = self.critic(params, key, feature)
-        critic_loss = jnp.mean(jnp.square(jnp.squeeze(targets - vals)))
+        critic_loss = jnp.mean(jnp.square(jnp.squeeze(targets - vals)) * filled[:, 0])
 
         prob, log_prob = self.get_logprob(
             self.actor(params, key, feature), actions, key, out_prob=True
         )
-        actor_loss = -jnp.mean(log_prob * jax.lax.stop_gradient(adv))
+        actor_loss = -jnp.mean(log_prob * jax.lax.stop_gradient(adv) * filled)
         entropy = prob * jnp.log(prob)
-        entropy_loss = jnp.mean(entropy)
+        entropy_loss = jnp.mean(entropy * filled)
         total_loss = self.val_coef * critic_loss + actor_loss + self.ent_coef * entropy_loss
         return total_loss, (critic_loss, actor_loss, entropy_loss)
 
-    def _loss_continuous(self, params, obses, actions, targets, adv, key):
+    def _loss_continuous(self, params, obses, actions, targets, adv, filled, key):
         feature = self.preproc(params, key, obses)
         vals = self.critic(params, key, feature)
-        critic_loss = jnp.mean(jnp.square(jnp.squeeze(targets - vals)))
+        critic_loss = jnp.mean(jnp.square(jnp.squeeze(targets - vals)) * filled[:, 0])
 
         prob, log_prob = self.get_logprob(
             self.actor(params, key, feature), actions, key, out_prob=True
         )
-        actor_loss = -jnp.mean(log_prob * jax.lax.stop_gradient(adv))
+        actor_loss = -jnp.mean(log_prob * jax.lax.stop_gradient(adv) * filled)
         mu, log_std = prob
-        entropy_loss = jnp.mean(jnp.square(mu) - log_std)
+        entropy_loss = jnp.mean((jnp.square(mu) - log_std) * filled)
         total_loss = self.val_coef * critic_loss + actor_loss + self.ent_coef * entropy_loss
         return total_loss, (critic_loss, actor_loss, entropy_loss)
 
