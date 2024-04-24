@@ -18,7 +18,7 @@ class Buffer(object):
             buffer[name] = np.zeros((size, *data["shape"]), dtype=data["dtype"])
         for name, data in env_dict.items():
             buffer[name] = np.zeros((size, *data["shape"]), dtype=data["dtype"])
-        buffer["terminal"] = np.ones((size, 1), dtype=np.bool_)
+        buffer["terminated"] = np.ones((size, 1), dtype=np.bool_)
         buffer["ep_idx"] = np.ones((size, 1), dtype=np.int32) * -1
         return buffer
 
@@ -40,8 +40,8 @@ class Buffer(object):
         self.buffer["ep_idx"][self.roll_idx] = self.ep_idx
         return self.roll_idx
 
-    def on_episode_end(self, terminal):
-        if not terminal:
+    def on_episode_end(self, truncated):
+        if truncated:
             self.update_idx()
             self.buffer["ep_idx"][self.roll_idx] = -1
         self.ep_idx += 1
@@ -60,10 +60,10 @@ class Buffer(object):
         data = {}
         for k in self.env_dict:
             data[k] = self.buffer[k][traj_idxs]
-        terminal = self.buffer["terminal"][traj_idxs, 0]
+        terminated = self.buffer["terminated"][traj_idxs, 0]
         filled = np.equal(self.buffer["ep_idx"][idxs], self.buffer["ep_idx"][traj_idxs])[..., 0]
-        filled = np.logical_and(filled, np.logical_not(terminal))
-        return obs, data, terminal, filled, idxs
+        filled = np.logical_and(filled, np.logical_not(terminated))
+        return obs, data, terminated, filled, idxs
 
     @property
     def roll_idx_m1(self):
@@ -204,21 +204,21 @@ class TransitionReplayBuffer(object):
     def is_full(self) -> int:
         return len(self) == self.max_size
 
-    def add(self, obs_t, action, reward, nxtobs_t, terminal, truncated=False):
+    def add(self, obs_t, action, reward, nxtobs_t, terminated, truncated=False):
         self.buffer.add(
             obs_t,
             nxtobs_t,
             actions=action,
             rewards=reward,
-            terminal=terminal,
+            terminated=terminated,
         )
-        if terminal or truncated:
-            self.buffer.on_episode_end(terminal)
+        if terminated or truncated:
+            self.buffer.on_episode_end(truncated)
 
     def sample(self, batch_size: int):
         idxs = np.random.randint(0, self.buffer.get_stored_size(), size=batch_size)
-        obs, data, terminal, filled, _ = self.buffer.sample(idxs, traj_len=self.prediction_depth)
-        return {"obses": obs, **data, "dones": terminal, "filled": filled}
+        obs, data, terminated, filled, _ = self.buffer.sample(idxs, traj_len=self.prediction_depth)
+        return {"obses": obs, **data, "terminateds": terminated, "filled": filled}
 
 
 class PrioritizedTransitionReplayBuffer(TransitionReplayBuffer):
@@ -236,17 +236,17 @@ class PrioritizedTransitionReplayBuffer(TransitionReplayBuffer):
         self.alpha = alpha
         self.eps = eps
 
-    def add(self, obs_t, action, reward, nxtobs_t, terminal, truncated=False):
+    def add(self, obs_t, action, reward, nxtobs_t, terminated, truncated=False):
         idx = self.buffer.add(
             obs_t,
             nxtobs_t,
             actions=action,
             rewards=reward,
-            terminal=terminal,
+            terminated=terminated,
         )
         self.tree.add(self.tree.max(), idx)
-        if terminal or truncated:
-            self.buffer.on_episode_end(terminal)
+        if terminated or truncated:
+            self.buffer.on_episode_end(terminated)
 
     def sample(self, batch_size: int, beta=0.4):
         idxs = np.zeros((batch_size), dtype=np.int32)
@@ -260,7 +260,7 @@ class PrioritizedTransitionReplayBuffer(TransitionReplayBuffer):
             idxs[i] = idx
             priorities[i] = p
             buffer_idxs[i] = buffer_idx
-        obs, data, terminal, filled, _ = self.buffer.sample(
+        obs, data, terminated, filled, _ = self.buffer.sample(
             buffer_idxs, traj_len=self.prediction_depth
         )
         weight = np.power(self.tree.n_entries * priorities / self.tree.total(), -beta)
@@ -269,7 +269,7 @@ class PrioritizedTransitionReplayBuffer(TransitionReplayBuffer):
         return {
             "obses": obs,
             **data,
-            "dones": terminal,
+            "terminateds": terminated,
             "filled": filled,
             "weights": weights,
             "indexes": idxs,

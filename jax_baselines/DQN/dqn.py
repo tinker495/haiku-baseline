@@ -152,16 +152,16 @@ class DQN(Q_Network_Family):
         actions,
         rewards,
         nxtobses,
-        dones,
+        terminateds,
         weights=1,
         indexes=None,
     ):
         obses = convert_jax(obses)
         nxtobses = convert_jax(nxtobses)
         actions = actions.astype(jnp.int32)
-        not_dones = 1.0 - dones
+        not_terminateds = 1.0 - terminateds
         targets = self._target(
-            params, target_params, obses, actions, rewards, nxtobses, not_dones, key
+            params, target_params, obses, actions, rewards, nxtobses, not_terminateds, key
         )
         (loss, abs_error), grad = jax.value_and_grad(self._loss, has_aux=True)(
             params, obses, actions, targets, weights, key
@@ -183,7 +183,7 @@ class DQN(Q_Network_Family):
             error
         )  # remove weight multiply cpprb weight is something wrong
 
-    def _target(self, params, target_params, obses, actions, rewards, nxtobses, not_dones, key):
+    def _target(self, params, target_params, obses, actions, rewards, nxtobses, not_terminateds, key):
         next_q = self.get_q(target_params, nxtobses, key)
 
         if self.munchausen:
@@ -195,7 +195,7 @@ class DQN(Q_Network_Family):
                 next_sub_q, tau_log_pi_next = q_log_pi(next_q, self.munchausen_entropy_tau)
             pi_next = jax.nn.softmax(next_sub_q / self.munchausen_entropy_tau)
             next_vals = (
-                jnp.sum(pi_next * (next_q - tau_log_pi_next), axis=1, keepdims=True) * not_dones
+                jnp.sum(pi_next * (next_q - tau_log_pi_next), axis=1, keepdims=True) * not_terminateds
             )
 
             q_k_targets = self.get_q(target_params, obses, key)
@@ -211,7 +211,7 @@ class DQN(Q_Network_Family):
                 next_actions = jnp.argmax(self.get_q(params, nxtobses, key), axis=1, keepdims=True)
             else:
                 next_actions = jnp.argmax(next_q, axis=1, keepdims=True)
-            next_vals = not_dones * jnp.take_along_axis(next_q, next_actions, axis=1)
+            next_vals = not_terminateds * jnp.take_along_axis(next_q, next_actions, axis=1)
         return (next_vals * self._gamma) + rewards
 
     def learn(

@@ -138,7 +138,7 @@ class APE_X_C51(Ape_X_Family):
                 key_seq = repeat(None)
 
             def get_abs_td_error(
-                model, preproc, params, obses, actions, rewards, nxtobses, dones, key
+                model, preproc, params, obses, actions, rewards, nxtobses, terminateds, key
             ):
                 distribution = jnp.squeeze(
                     jnp.take_along_axis(
@@ -158,7 +158,7 @@ class APE_X_C51(Ape_X_Family):
                     axis=(1, 2),
                 )
                 next_distribution = jnp.squeeze(jnp.take_along_axis(next_q, next_actions, axis=1))
-                next_categorial = (1.0 - dones) * categorial_bar
+                next_categorial = (1.0 - terminateds) * categorial_bar
                 target_categorial = (next_categorial * gamma) + rewards
 
                 Tz = jnp.clip(target_categorial, categorial_min, categorial_max)
@@ -253,28 +253,28 @@ class APE_X_C51(Ape_X_Family):
         actions,
         rewards,
         nxtobses,
-        dones,
+        terminateds,
         weights=1,
         indexes=None,
     ):
         obses = convert_jax(obses)
         nxtobses = convert_jax(nxtobses)
         actions = jnp.expand_dims(actions.astype(jnp.int32), axis=2)
-        not_dones = 1.0 - dones
+        not_terminateds = 1.0 - terminateds
         batch_idxes = jnp.arange(self.batch_size).reshape(-1, self.mini_batch_size)
         obses_batch = [o[batch_idxes] for o in obses]
         actions_batch = actions[batch_idxes]
         rewards_batch = rewards[batch_idxes]
         nxtobses_batch = [o[batch_idxes] for o in nxtobses]
-        not_dones_batch = not_dones[batch_idxes]
+        not_terminateds_batch = not_terminateds[batch_idxes]
         weights_batch = weights[batch_idxes]
 
         def f(carry, data):
             params, opt_state, key = carry
-            obses, actions, rewards, nxtobses, not_dones, weights = data
+            obses, actions, rewards, nxtobses, not_terminateds, weights = data
             key, *subkeys = jax.random.split(key, 3)
             target_distribution = self._target(
-                params, target_params, obses, actions, rewards, nxtobses, not_dones, subkeys[0]
+                params, target_params, obses, actions, rewards, nxtobses, not_terminateds, subkeys[0]
             )
             (loss, abs_error), grad = jax.value_and_grad(self._loss, has_aux=True)(
                 params, obses, actions, target_distribution, weights, subkeys[1]
@@ -291,7 +291,7 @@ class APE_X_C51(Ape_X_Family):
                 actions_batch,
                 rewards_batch,
                 nxtobses_batch,
-                not_dones_batch,
+                not_terminateds_batch,
                 weights_batch,
             ),
         )
@@ -319,7 +319,7 @@ class APE_X_C51(Ape_X_Family):
         loss = jnp.mean(target_distribution * (-jnp.log(distribution + 1e-5)), axis=1)
         return jnp.mean(loss * weights), loss
 
-    def _target(self, params, target_params, obses, actions, rewards, nxtobses, not_dones, key):
+    def _target(self, params, target_params, obses, actions, rewards, nxtobses, not_terminateds, key):
         next_q = self.get_q(target_params, nxtobses, key)
         if self.double_q:
             next_actions = jnp.expand_dims(
@@ -341,7 +341,7 @@ class APE_X_C51(Ape_X_Family):
             _, tau_log_pi_next, pi_next = q_log_pi(next_q_mean, self.munchausen_entropy_tau)
             next_categorial = (
                 self.categorial_bar - jnp.sum(pi_next * tau_log_pi_next, axis=1, keepdims=True)
-            ) * not_dones
+            ) * not_terminateds
 
             q_k_targets = jnp.sum(
                 self.get_q(target_params, obses, key) * self.categorial_bar, axis=2
@@ -354,7 +354,7 @@ class APE_X_C51(Ape_X_Family):
                 munchausen_addon, a_min=-1, a_max=0
             )
         else:
-            next_categorial = not_dones * self.categorial_bar
+            next_categorial = not_terminateds * self.categorial_bar
         target_categorial = (next_categorial * self._gamma) + rewards  # [32, 51]
         Tz = jnp.clip(
             target_categorial, self.categorial_min, self.categorial_max

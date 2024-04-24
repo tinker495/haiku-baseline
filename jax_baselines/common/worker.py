@@ -35,31 +35,31 @@ class gymMultiworker(Multiworker):
     def get_steps(self):
         states = []
         rewards = []
-        dones = []
-        terminals = []
+        terminateds = []
+        truncateds = []
         infos = []
         end_states = []
         end_idx = []
-        for idx, (state, end_state, reward, done, terminal, info) in enumerate(ray.get(self.steps)):
+        for idx, (state, end_state, reward, terminated, truncated, info) in enumerate(ray.get(self.steps)):
             states.append(state)
             rewards.append(reward)
-            dones.append(done)
-            terminals.append(terminal)
+            terminateds.append(terminated)
+            truncateds.append(truncated)
             infos.append(info)
             if end_state is not None:
                 end_states.append(end_state)
                 end_idx.append(idx)
         states = np.stack(states, axis=0)
         rewards = np.stack(rewards, axis=0)
-        dones = np.stack(dones, axis=0)
-        terminals = np.stack(terminals, axis=0)
+        terminateds = np.stack(terminateds, axis=0)
+        truncateds = np.stack(truncateds, axis=0)
         if len(end_states):
             end_states = np.stack(end_states, axis=0)
             end_idx = np.stack(end_idx, axis=0)
         else:
             end_states = None
             end_idx = None
-        return states, rewards, dones, terminals, infos, end_states, end_idx
+        return states, rewards, terminateds, truncateds, infos, end_states, end_idx
 
     def close(self):
         ray.shutdown()
@@ -96,10 +96,10 @@ class gymRayworker:
     def step(self, action):
         if self.render:
             self.env.render()
-        state, reward, terminal, truncated, info = self.env.step(self.action_conv(action))
-        if terminal or truncated:
+        state, reward, terminated, truncated, info = self.env.step(self.action_conv(action))
+        if terminated or truncated:
             end_state = state
             state, _ = self.env.reset()
         else:
             end_state = None
-        return state, end_state, reward, terminal, truncated, info
+        return state, end_state, reward, terminated, truncated, info

@@ -11,11 +11,11 @@ class TransitionRoller(object):
         )
         self.rolldict["action"] = np.zeros((self.prediction_depth, *action_space), dtype=np.float32)
         self.rolldict["reward"] = np.zeros((self.prediction_depth,), dtype=np.float32)
-        self.rolldict["terminal"] = np.zeros((self.prediction_depth,), dtype=np.bool_)
+        self.rolldict["terminated"] = np.zeros((self.prediction_depth,), dtype=np.bool_)
         self.rolldict["filled"] = np.zeros((self.prediction_depth,), dtype=np.bool_)
         self._idx = -1
 
-    def __call__(self, obses, action, reward, nxtobses, terminal):
+    def __call__(self, obses, action, reward, nxtobses, terminated):
         if self._idx == -1:
             self._idx = 0
             for idx, k in enumerate(self.obsdict.keys()):
@@ -24,8 +24,8 @@ class TransitionRoller(object):
             self.rolldict[k][self.next_obs_idx] = nxtobses[idx]
         self.rolldict["action"][self.idx] = action
         self.rolldict["reward"][self.idx] = reward
-        self.rolldict["terminal"][self.idx] = terminal
-        self.rolldict["filled"][self.idx] = not terminal
+        self.rolldict["terminated"][self.idx] = terminated
+        self.rolldict["filled"][self.idx] = not terminated
         self.update_idx()
 
     def fill_empty(self):
@@ -96,7 +96,7 @@ class TransitionReplayBuffer(object):
                 **self.obsdict,
                 "action": {"shape": (prediction_depth, *action_space), "dtype": np.float32},
                 "reward": {"shape": (prediction_depth,), "dtype": np.float32},
-                "terminal": {"shape": (prediction_depth,), "dtype": np.bool_},
+                "terminated": {"shape": (prediction_depth,), "dtype": np.bool_},
                 "filled": {"shape": (prediction_depth,), "dtype": np.bool_},
             },
         )
@@ -121,11 +121,11 @@ class TransitionReplayBuffer(object):
     def is_full(self) -> int:
         return len(self) == self.max_size
 
-    def add(self, obs_t, action, reward, nxtobs_t, terminal, truncated=False):
-        self.roller(obs_t, action, reward, nxtobs_t, terminal)
+    def add(self, obs_t, action, reward, nxtobs_t, terminated, truncated=False):
+        self.roller(obs_t, action, reward, nxtobs_t, terminated)
         if self.roller._idx >= self.roller.prediction_depth:
             self.buffer.add(**self.roller.get_transition())
-        if terminal or truncated:
+        if terminated or truncated:
             for _ in range(self.roller.prediction_depth - 1):
                 self.roller.fill_empty()
                 self.buffer.add(**self.roller.get_transition())
@@ -137,7 +137,7 @@ class TransitionReplayBuffer(object):
             "obses": [smpl[o] for o in self.obsdict.keys()],
             "actions": smpl["action"],
             "rewards": smpl["reward"],
-            "dones": smpl["terminal"],
+            "terminateds": smpl["terminated"],
             "filled": smpl["filled"],
         }
 
@@ -172,7 +172,7 @@ class PrioritizedTransitionReplayBuffer(TransitionReplayBuffer):
                 **self.obsdict,
                 "action": {"shape": (prediction_depth, *action_space), "dtype": np.float32},
                 "reward": {"shape": (prediction_depth,), "dtype": np.float32},
-                "terminal": {"shape": (prediction_depth,), "dtype": np.bool_},
+                "terminated": {"shape": (prediction_depth,), "dtype": np.bool_},
                 "filled": {"shape": (prediction_depth,), "dtype": np.bool_},
             },
             alpha=alpha,
@@ -188,7 +188,7 @@ class PrioritizedTransitionReplayBuffer(TransitionReplayBuffer):
             "obses": [smpl[o] for o in self.obsdict.keys()],
             "actions": smpl["action"],
             "rewards": smpl["reward"],
-            "dones": smpl["terminal"],
+            "terminateds": smpl["terminated"],
             "filled": smpl["filled"],
             "weights": smpl["weights"],
             "indexes": smpl["indexes"],

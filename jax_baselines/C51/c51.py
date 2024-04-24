@@ -180,16 +180,16 @@ class C51(Q_Network_Family):
         actions,
         rewards,
         nxtobses,
-        dones,
+        terminateds,
         weights=1,
         indexes=None,
     ):
         obses = convert_jax(obses)
         nxtobses = convert_jax(nxtobses)
         actions = jnp.expand_dims(actions.astype(jnp.int32), axis=2)
-        not_dones = 1.0 - dones
+        not_terminateds = 1.0 - terminateds
         target_distribution = self._target(
-            params, target_params, obses, actions, rewards, nxtobses, not_dones, key
+            params, target_params, obses, actions, rewards, nxtobses, not_terminateds, key
         )
         (loss, centropy), grad = jax.value_and_grad(self._loss, has_aux=True)(
             params, obses, actions, target_distribution, weights, key
@@ -221,7 +221,7 @@ class C51(Q_Network_Family):
         centropy = jnp.sum(target_distribution * (-jnp.log(distribution + 1e-8)), axis=1)
         return jnp.mean(centropy * weights), centropy
 
-    def _target(self, params, target_params, obses, actions, rewards, nxtobses, not_dones, key):
+    def _target(self, params, target_params, obses, actions, rewards, nxtobses, not_terminateds, key):
         next_q = self.get_q(target_params, nxtobses, key)
         if self.double_q:
             next_action_q = jnp.sum(
@@ -251,7 +251,7 @@ class C51(Q_Network_Family):
             )
         else:
             next_categorial = self.categorial_bar
-        target_categorial = self._gamma * not_dones * next_categorial + rewards  # [32, 51]
+        target_categorial = self._gamma * not_terminateds * next_categorial + rewards  # [32, 51]
         Tz = jnp.clip(
             target_categorial, self.categorial_min, self.categorial_max
         )  # clip to range of bar

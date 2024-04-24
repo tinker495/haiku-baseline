@@ -89,6 +89,10 @@ if __name__ == "__main__":
     policy_kwargs = {"node": args.node, "hidden_n": args.hidden_n, "embedding_mode": embedding_mode}
 
     if args.algo == "DDPG":
+        if args.model_lib == "flax":
+            from model_builder.flax.qnet.iqn_builder import model_builder_maker
+        elif args.model_lib == "haiku":
+            from model_builder.haiku.qnet.iqn_builder import model_builder_maker
         agent = DDPG(
             env,
             gamma=args.gamma,

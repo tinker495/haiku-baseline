@@ -33,14 +33,14 @@ class EpochBuffer(object):
                     "action": {"shape": action_space},
                     "reward": {},
                     **self.nextobsdict,
-                    "done": {},
-                    "terminal": {},
+                    "terminated": {},
+                    "truncated": {},
                 },
             )
             for _ in range(worker_size)
         ]
 
-    def add(self, obs_t, action, reward, nxtobs_t, done, terminal):
+    def add(self, obs_t, action, reward, nxtobs_t, terminated, truncated):
         for w in range(self.worker_size):
             obsdict = dict(zip(self.obsdict.keys(), [o[w] for o in obs_t]))
             nextobsdict = dict(zip(self.nextobsdict.keys(), [no[w] for no in nxtobs_t]))
@@ -49,10 +49,10 @@ class EpochBuffer(object):
                 action=action[w],
                 reward=reward[w],
                 **nextobsdict,
-                done=done[w],
-                terminal=terminal[w],
+                terminated=terminated[w],
+                truncated=truncated[w],
             )
-            if done[w] or terminal[w]:
+            if terminated[w] or truncated[w]:
                 self.local_buffers[w].on_episode_end()
 
     def get_buffer(self):
@@ -61,8 +61,8 @@ class EpochBuffer(object):
             "actions": [],
             "rewards": [],
             "nxtobses": [],
-            "dones": [],
-            "terminals": [],
+            "terminateds": [],
+            "truncateds": [],
         }
         for w in range(self.worker_size):
             trans = self.local_buffers[w].get_all_transitions()
@@ -70,8 +70,8 @@ class EpochBuffer(object):
             transitions["actions"].append(trans["action"])
             transitions["rewards"].append(trans["reward"])
             transitions["nxtobses"].append([trans[o] for o in self.nextobsdict.keys()])
-            transitions["dones"].append(trans["done"])
-            transitions["terminals"].append(trans["terminal"])
+            transitions["terminateds"].append(trans["terminated"])
+            transitions["truncateds"].append(trans["truncated"])
             self.local_buffers[w].clear()
         return transitions
 
@@ -121,7 +121,7 @@ class ReplayBuffer(object):
                     "action": {"shape": action_space},
                     "reward": {},
                     **self.nextobsdict,
-                    "done": {},
+                    "terminated": {},
                 },
                 next_of=self.obscompress,
                 stack_compress=self.obscompress,
@@ -148,10 +148,10 @@ class ReplayBuffer(object):
     def is_full(self) -> int:
         return len(self) == self.max_size
 
-    def add(self, obs_t, action, reward, nxtobs_t, done, terminal=False):
+    def add(self, obs_t, action, reward, nxtobs_t, terminated, truncated=False):
         obsdict = dict(zip(self.obsdict.keys(), obs_t))
         nextobsdict = dict(zip(self.nextobsdict.keys(), nxtobs_t))
-        self.buffer.add(**obsdict, action=action, reward=reward, **nextobsdict, done=done)
+        self.buffer.add(**obsdict, action=action, reward=reward, **nextobsdict, terminated=terminated)
 
     def episode_end(self):
         self.buffer.on_episode_end()
@@ -163,7 +163,7 @@ class ReplayBuffer(object):
             "actions": smpl["action"],
             "rewards": smpl["reward"],
             "nxtobses": [smpl[no] for no in self.nextobsdict.keys()],
-            "dones": smpl["done"],
+            "terminateds": smpl["terminated"],
         }
 
     def get_buffer(self):
@@ -175,7 +175,7 @@ class ReplayBuffer(object):
             "actions": transitions["action"],
             "rewards": transitions["reward"],
             "nxtobses": [transitions[no] for no in self.nextobsdict.keys()],
-            "dones": transitions["done"],
+            "terminateds": transitions["terminated"],
         }
 
     def clear(self):
@@ -236,7 +236,7 @@ class NstepReplayBuffer(ReplayBuffer):
                     "action": {"shape": action_space},
                     "reward": {},
                     **self.nextobsdict,
-                    "done": {},
+                    "terminated": {},
                 },
                 next_of=self.obscompress,
                 stack_compress=self.obscompress,
@@ -249,7 +249,7 @@ class NstepReplayBuffer(ReplayBuffer):
                         "action": {"shape": action_space},
                         "reward": {},
                         **self.nextobsdict,
-                        "done": {},
+                        "terminated": {},
                     },
                     Nstep=n_s,
                 )
@@ -264,19 +264,19 @@ class NstepReplayBuffer(ReplayBuffer):
                     "action": {"shape": action_space},
                     "reward": {},
                     **self.nextobsdict,
-                    "done": {},
+                    "terminated": {},
                 },
                 Nstep=n_s,
                 next_of=self.obscompress,
                 stack_compress=self.obscompress,
             )
 
-    def add(self, obs_t, action, reward, nxtobs_t, done, terminal=False):
-        super().add(obs_t, action, reward, nxtobs_t, done, terminal)
-        if done or terminal:
+    def add(self, obs_t, action, reward, nxtobs_t, terminated, truncated=False):
+        super().add(obs_t, action, reward, nxtobs_t, terminated, truncated)
+        if terminated or truncated:
             self.buffer.on_episode_end()
 
-    def multiworker_add(self, obs_t, action, reward, nxtobs_t, done, terminal=False):
+    def multiworker_add(self, obs_t, action, reward, nxtobs_t, terminated, truncated=False):
         for w in range(self.worker_size):
             obsdict = dict(zip(self.obsdict.keys(), [o[w] for o in obs_t]))
             nextobsdict = dict(zip(self.nextobsdict.keys(), [no[w] for no in nxtobs_t]))
@@ -285,9 +285,9 @@ class NstepReplayBuffer(ReplayBuffer):
                 action=action[w],
                 reward=reward[w],
                 **nextobsdict,
-                done=done[w],
+                terminated=terminated[w],
             )
-            if done[w] or terminal[w]:
+            if terminated[w] or truncated[w]:
                 self.local_buffers[w].on_episode_end()
                 self.buffer.add(**self.local_buffers[w].get_all_transitions())
                 self.local_buffers[w].clear()
@@ -337,7 +337,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
                 "action": {"shape": action_space},
                 "reward": {},
                 **self.nextobsdict,
-                "done": {},
+                "terminated": {},
             },
             alpha=alpha,
             eps=eps,
@@ -352,7 +352,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             "actions": smpl["action"],
             "rewards": smpl["reward"],
             "nxtobses": [smpl[no] for no in self.nextobsdict.keys()],
-            "dones": smpl["done"],
+            "terminateds": smpl["terminated"],
             "weights": smpl["weights"],
             "indexes": smpl["indexes"],
         }
@@ -417,7 +417,7 @@ class PrioritizedNstepReplayBuffer(NstepReplayBuffer):
                     "action": {"shape": action_space},
                     "reward": {},
                     **self.nextobsdict,
-                    "done": {},
+                    "terminated": {},
                 },
                 alpha=alpha,
                 eps=eps,
@@ -432,7 +432,7 @@ class PrioritizedNstepReplayBuffer(NstepReplayBuffer):
                         "action": {"shape": action_space},
                         "reward": {},
                         **self.nextobsdict,
-                        "done": {},
+                        "terminated": {},
                     },
                     Nstep=n_s,
                 )
@@ -447,7 +447,7 @@ class PrioritizedNstepReplayBuffer(NstepReplayBuffer):
                     "action": {"shape": action_space},
                     "reward": {},
                     **self.nextobsdict,
-                    "done": {},
+                    "terminated": {},
                 },
                 alpha=alpha,
                 eps=eps,
@@ -463,7 +463,7 @@ class PrioritizedNstepReplayBuffer(NstepReplayBuffer):
             "actions": smpl["action"],
             "rewards": smpl["reward"],
             "nxtobses": [smpl[no] for no in self.nextobsdict.keys()],
-            "dones": smpl["done"],
+            "terminateds": smpl["terminated"],
             "weights": smpl["weights"],
             "indexes": smpl["indexes"],
         }
@@ -517,7 +517,7 @@ class MultiPrioritizedReplayBuffer:
             "action": {"shape": action_space},
             "reward": {},
             **self.nextobsdict,
-            "done": {},
+            "terminated": {},
         }
 
         self.n_s = None
@@ -551,7 +551,7 @@ class MultiPrioritizedReplayBuffer:
             "actions": smpl["action"],
             "rewards": smpl["reward"],
             "nxtobses": [smpl[no] for no in self.nextobsdict.keys()],
-            "dones": smpl["done"],
+            "terminateds": smpl["terminated"],
             "weights": smpl["weights"],
             "indexes": smpl["indexes"],
         }

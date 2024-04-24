@@ -74,7 +74,7 @@ class Impala_Worker(object):
                 for i in range(local_size):
                     eplen += 1
                     actions, log_prob = get_action_prob(params, state)
-                    next_state, reward, terminal, truncated, info = self.env.step(
+                    next_state, reward, terminated, truncated, info = self.env.step(
                         convert_action(actions)
                     )
                     next_state = [np.expand_dims(next_state, axis=0)]
@@ -84,7 +84,7 @@ class Impala_Worker(object):
                         log_prob,
                         reward,
                         next_state,
-                        terminal or truncated,
+                        terminated or truncated,
                         truncated,
                     )
                     if have_original_reward:
@@ -92,12 +92,12 @@ class Impala_Worker(object):
                     score += reward
                     state = next_state
 
-                    if terminal or truncated:
+                    if terminated or truncated:
                         if logger_server is not None:
                             log_dict = {
                                 rw_label: score,
                                 len_label: eplen,
-                                to_label: 1 - terminal,
+                                to_label: 1 - terminated,
                             }
                             if have_original_reward:
                                 if have_lives:

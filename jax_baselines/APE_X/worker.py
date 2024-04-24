@@ -92,23 +92,23 @@ class Ape_X_Worker(object):
 
                 eplen += 1
                 actions = get_action(params, state, eps, next(key_seq))
-                next_state, reward, terminal, truncated, info = self.env.step(actions)
+                next_state, reward, terminated, truncated, info = self.env.step(actions)
                 next_state = [np.expand_dims(next_state, axis=0)]
                 local_buffer.add(
-                    state, actions, reward, next_state, terminal or truncated, truncated
+                    state, actions, reward, next_state, terminated or truncated, truncated
                 )
                 if have_original_reward:
                     original_score += info["original_reward"]
                 score += reward
                 state = next_state
 
-                if terminal or truncated:
+                if terminated or truncated:
                     local_buffer.episode_end()
                     if logger_server is not None:
                         log_dict = {
                             rw_label: score,
                             len_label: eplen,
-                            to_label: 1 - terminal,
+                            to_label: 1 - terminated,
                         }
                         if have_original_reward:
                             if have_lives:

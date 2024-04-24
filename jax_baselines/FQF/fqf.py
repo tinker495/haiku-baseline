@@ -206,14 +206,14 @@ class FQF(Q_Network_Family):
         actions,
         rewards,
         nxtobses,
-        dones,
+        terminateds,
         weights=1,
         indexes=None,
     ):
         obses = convert_jax(obses)
         nxtobses = convert_jax(nxtobses)
         actions = jnp.expand_dims(actions.astype(jnp.int32), axis=2)
-        not_dones = 1.0 - dones
+        not_terminateds = 1.0 - terminateds
         (
             loss,
             (abs_error, feature, taus, tau_hats, theta_loss_tile, targets),
@@ -225,7 +225,7 @@ class FQF(Q_Network_Family):
             actions,
             rewards,
             nxtobses,
-            not_dones,
+            not_terminateds,
             weights,
             key,
         )
@@ -265,7 +265,7 @@ class FQF(Q_Network_Family):
         actions,
         rewards,
         nxtobses,
-        not_dones,
+        not_terminateds,
         weights,
         key,
     ):
@@ -281,7 +281,7 @@ class FQF(Q_Network_Family):
                 actions,
                 rewards,
                 nxtobses,
-                not_dones,
+                not_terminateds,
                 key,
             )
         )
@@ -336,7 +336,7 @@ class FQF(Q_Network_Family):
         actions,
         rewards,
         nxtobses,
-        not_dones,
+        not_terminateds,
         key,
     ):
         if self.double_q:
@@ -384,7 +384,7 @@ class FQF(Q_Network_Family):
                     pi_next * (next_quantiles - jnp.expand_dims(tau_log_pi_next, axis=2)),
                     axis=1,
                 )
-                * not_dones
+                * not_terminateds
             )
 
             q_k_targets = self.get_q(
@@ -408,7 +408,7 @@ class FQF(Q_Network_Family):
             rewards += self.munchausen_alpha * jnp.clip(munchausen_addon, a_min=-1, a_max=0)
         else:
             next_actions = jnp.expand_dims(jnp.argmax(next_q, axis=1), axis=(1, 2))
-            next_vals = not_dones * jnp.squeeze(
+            next_vals = not_terminateds * jnp.squeeze(
                 jnp.take_along_axis(next_quantiles, next_actions, axis=1)
             )  # batch x support
         return (next_vals * self._gamma) + rewards  # batch x support

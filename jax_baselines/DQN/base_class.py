@@ -293,7 +293,7 @@ class Q_Network_Family(object):
             term_ids = term.agent_id
             term_obses = convert_states(term.obs)
             term_rewards = term.reward
-            term_done = term.interrupted
+            term_interrupted = term.interrupted
             while len(dec) == 0:
                 self.env.step()
                 dec, term = self.env.get_steps(self.group_name)
@@ -304,20 +304,20 @@ class Q_Network_Family(object):
                         for to, o in zip(term_obses, convert_states(term.obs))
                     ]
                     term_rewards = np.append(term_rewards, term.reward)
-                    term_done = np.append(term_done, term.interrupted)
+                    term_interrupted = np.append(term_interrupted, term.interrupted)
             nxtobs = convert_states(dec.obs)
-            done = np.full((self.worker_size), False)
-            terminal = np.full((self.worker_size), False)
+            terminated = np.full((self.worker_size), False)
+            truncated = np.full((self.worker_size), False)
             reward = dec.reward
             term_on = len(term_ids) > 0
             if term_on:
                 nxtobs_t = [n.at[term_ids].set(t) for n, t in zip(nxtobs, term_obses)]
-                done[term_ids] = np.logical_not(term_done)
-                terminal[term_ids] = True
+                terminated[term_ids] = term_interrupted
+                truncated[term_ids] = np.logical_not(term_interrupted)
                 reward[term_ids] = term_rewards
-                self.replay_buffer.add(obses, actions, reward, nxtobs_t, done, terminal)
+                self.replay_buffer.add(obses, actions, reward, nxtobs_t, terminated, truncated)
             else:
-                self.replay_buffer.add(obses, actions, reward, nxtobs, done, terminal)
+                self.replay_buffer.add(obses, actions, reward, nxtobs, terminated, truncated)
             self.scores += reward
             obses = nxtobs
             if term_on:
@@ -328,7 +328,7 @@ class Q_Network_Family(object):
                     self.summary.add_scalar("env/episode_len", np.mean(self.eplen[term_ids]), steps)
                     self.summary.add_scalar(
                         "env/time_over",
-                        np.mean(1 - done[term_ids].astype(np.float32)),
+                        np.mean(truncated[term_ids].astype(np.float32)),
                         steps,
                     )
                 self.scoreque.extend(self.scores[term_ids])
@@ -353,14 +353,14 @@ class Q_Network_Family(object):
         for steps in pbar:
             self.eplen += 1
             actions = self.actions(state, self.update_eps)
-            next_state, reward, terminal, truncated, info = self.env.step(actions[0][0])
+            next_state, reward, terminated, truncated, info = self.env.step(actions[0][0])
             next_state = [np.expand_dims(next_state, axis=0)]
-            self.replay_buffer.add(state, actions[0], reward, next_state, terminal, truncated)
+            self.replay_buffer.add(state, actions[0], reward, next_state, terminated, truncated)
             if have_original_reward:
                 self.original_score[0] += info["original_reward"]
             self.scores[0] += reward
             state = next_state
-            if terminal or truncated:
+            if terminated or truncated:
                 self.scoreque.append(self.scores[0])
                 if self.summary:
                     if have_original_reward:
@@ -416,8 +416,8 @@ class Q_Network_Family(object):
             (
                 real_nextstates,
                 rewards,
-                dones,
-                terminals,
+                terminateds,
+                truncateds,
                 infos,
                 end_states,
                 end_idx,
@@ -451,16 +451,16 @@ class Q_Network_Family(object):
                     self.summary.add_scalar("env/episode_len", np.mean(self.eplen[end_idx]), steps)
                     self.summary.add_scalar(
                         "env/time_over",
-                        np.mean(1 - dones[end_idx].astype(np.float32)),
+                        np.mean(truncateds[end_idx].astype(np.float32)),
                         steps,
                     )
                 self.scoreque.extend(self.scores[end_idx])
                 self.scores[end_idx] = 0
                 self.eplen[end_idx] = 0
-                self.replay_buffer.add([state], actions, rewards, [nxtstates], dones, terminals)
+                self.replay_buffer.add([state], actions, rewards, [nxtstates], terminateds, truncateds)
             else:
                 self.replay_buffer.add(
-                    [state], actions, rewards, [real_nextstates], dones, terminals
+                    [state], actions, rewards, [real_nextstates], terminateds, truncateds
                 )
             state = real_nextstates
             if steps % log_interval == 0 and len(self.scoreque) > 0 and len(self.lossque) > 0:
@@ -485,12 +485,12 @@ class Q_Network_Family(object):
         for i in range(episode):
             state, info = Render_env.reset()
             state = [np.expand_dims(state, axis=0)]
-            terminal = False
+            terminated = False
             truncated = False
             episode_rew = 0
-            while not (terminal or truncated):
+            while not (terminated or truncated):
                 actions = self.actions(state, 0.001)
-                observation, reward, terminal, truncated, info = Render_env.step(actions[0][0])
+                observation, reward, terminated, truncated, info = Render_env.step(actions[0][0])
                 state = [np.expand_dims(observation, axis=0)]
                 episode_rew += reward
             Render_env.close()

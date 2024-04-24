@@ -135,8 +135,8 @@ class IMPALA_TPPO(IMPALA_Family):
         mu_log_prob,
         rewards,
         nxtobses,
-        dones,
-        terminals,
+        terminateds,
+        truncteds,
     ):
         # ((b x h x w x c), (b x n)) x worker -> (worker x b x h x w x c), (worker x b x n)
         obses = [jnp.stack(zo) for zo in zip(*obses)]
@@ -144,8 +144,8 @@ class IMPALA_TPPO(IMPALA_Family):
         actions = jnp.stack(actions)
         mu_log_prob = jnp.stack(mu_log_prob)
         rewards = jnp.stack(rewards)
-        dones = jnp.stack(dones)
-        terminals = jnp.stack(terminals)
+        terminateds = jnp.stack(terminateds)
+        truncteds = jnp.stack(truncteds)
         obses = jax.vmap(convert_jax)(obses)
         nxtobses = jax.vmap(convert_jax)(nxtobses)
         feature = jax.vmap(self.preproc, in_axes=(None, None, 0))(params, key, obses)
@@ -165,15 +165,15 @@ class IMPALA_TPPO(IMPALA_Family):
         rho = jnp.minimum(rho_raw, self.rho_max)
         c_t = self.lamda * jnp.minimum(rho, self.cut_max)
         vs = jax.vmap(get_vtrace, in_axes=(0, 0, 0, 0, 0, 0, 0, None))(
-            rewards, rho, c_t, dones, terminals, value, next_value, self.gamma
+            rewards, rho, c_t, terminateds, truncteds, value, next_value, self.gamma
         )
         vs_t_plus_1 = jax.vmap(
             lambda v, nv, t: jnp.where(
                 t == 1, nv, jnp.concatenate([v[1:], jnp.expand_dims(nv[-1], axis=-1)])
             ),
             in_axes=(0, 0, 0),
-        )(vs, next_value, terminals)
-        adv = rewards + self.gamma * (1.0 - dones) * vs_t_plus_1 - value
+        )(vs, next_value, truncteds)
+        adv = rewards + self.gamma * (1.0 - terminateds) * vs_t_plus_1 - value
         # adv = (adv - jnp.mean(adv,keepdims=True)) / (jnp.std(adv,keepdims=True) + 1e-6)
         adv = rho * adv
         obses = [jnp.vstack(o) for o in obses]
@@ -203,8 +203,8 @@ class IMPALA_TPPO(IMPALA_Family):
         mu_log_prob,
         rewards,
         nxtobses,
-        dones,
-        terminals,
+        terminateds,
+        truncteds,
     ):
         obses, actions, vs, old_prob, old_act_prob, rho, adv = self.preprocess(
             params,
@@ -214,8 +214,8 @@ class IMPALA_TPPO(IMPALA_Family):
             mu_log_prob,
             rewards,
             nxtobses,
-            dones,
-            terminals,
+            terminateds,
+            truncteds,
         )
 
         def i_f(idx, vals):

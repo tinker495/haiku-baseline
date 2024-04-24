@@ -176,17 +176,17 @@ class IQN(Q_Network_Family):
         actions,
         rewards,
         nxtobses,
-        dones,
+        terminateds,
         weights=1,
         indexes=None,
     ):
         obses = convert_jax(obses)
         nxtobses = convert_jax(nxtobses)
         actions = jnp.expand_dims(actions.astype(jnp.int32), axis=2)
-        not_dones = 1.0 - dones
+        not_terminateds = 1.0 - terminateds
         key1, key2 = jax.random.split(key, 2)
         targets = self._target(
-            params, target_params, obses, actions, rewards, nxtobses, not_dones, key1
+            params, target_params, obses, actions, rewards, nxtobses, not_terminateds, key1
         )
         (loss, abs_error), grad = jax.value_and_grad(self._loss, has_aux=True)(
             params, obses, actions, targets, weights, key2
@@ -218,7 +218,7 @@ class IQN(Q_Network_Family):
         )
         return jnp.mean(loss * weights), loss
 
-    def _target(self, params, target_params, obses, actions, rewards, nxtobses, not_dones, key):
+    def _target(self, params, target_params, obses, actions, rewards, nxtobses, not_terminateds, key):
         target_tau = jax.random.uniform(key, (self.batch_size, self.n_support))
         next_q = self.get_q(target_params, nxtobses, target_tau, key)
 
@@ -236,7 +236,7 @@ class IQN(Q_Network_Family):
                     pi_next * (next_q - jnp.expand_dims(tau_log_pi_next, axis=2)),
                     axis=1,
                 )
-                * not_dones
+                * not_terminateds
             )
 
             q_k_targets = jnp.mean(self.get_q(target_params, obses, target_tau, key), axis=2)
@@ -258,7 +258,7 @@ class IQN(Q_Network_Family):
                 next_actions = jnp.argmax(
                     jnp.mean(next_q, axis=2, keepdims=True), axis=1, keepdims=True
                 )
-            next_vals = not_dones * jnp.squeeze(
+            next_vals = not_terminateds * jnp.squeeze(
                 jnp.take_along_axis(next_q, next_actions, axis=1)
             )  # batch x support
         return (next_vals * self._gamma) + rewards  # batch x support

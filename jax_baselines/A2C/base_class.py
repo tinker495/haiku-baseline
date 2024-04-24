@@ -269,22 +269,22 @@ class Actor_Critic_Policy_Gradient_Family(object):
                     term_rewards = np.append(term_rewards, term.reward)
                     term_done = np.append(term_done, term.interrupted)
             nxtobs = convert_states(dec.obs)
-            done = np.full((self.worker_size), False)
-            terminal = np.full((self.worker_size), False)
+            terminated = np.full((self.worker_size), False)
+            terminated = np.full((self.worker_size), False)
             reward = dec.reward
             term_on = len(term_ids) > 0
             if term_on:
                 nxtobs_t = [n.at[term_ids].set(t) for n, t in zip(nxtobs, term_obses)]
-                done[term_ids] = np.logical_not(term_done)
-                terminal[term_ids] = True
+                terminated[term_ids] = np.logical_not(term_done)
+                terminated[term_ids] = True
                 reward[term_ids] = term_rewards
                 self.buffer.add(
                     obses,
                     actions,
                     np.expand_dims(reward, axis=1),
                     nxtobs_t,
-                    np.expand_dims(done, axis=1),
-                    np.expand_dims(terminal, axis=1),
+                    np.expand_dims(terminated, axis=1),
+                    np.expand_dims(terminated, axis=1),
                 )
             else:
                 self.buffer.add(
@@ -292,8 +292,8 @@ class Actor_Critic_Policy_Gradient_Family(object):
                     actions,
                     np.expand_dims(reward, axis=1),
                     nxtobs,
-                    np.expand_dims(done, axis=1),
-                    np.expand_dims(terminal, axis=1),
+                    np.expand_dims(terminated, axis=1),
+                    np.expand_dims(terminated, axis=1),
                 )
             self.scores += reward
             obses = nxtobs
@@ -305,7 +305,7 @@ class Actor_Critic_Policy_Gradient_Family(object):
                     self.summary.add_scalar("env/episode len", np.mean(self.eplen[term_ids]), steps)
                     self.summary.add_scalar(
                         "env/time over",
-                        np.mean(1 - done[term_ids].astype(np.float32)),
+                        np.mean(1 - terminated[term_ids].astype(np.float32)),
                         steps,
                     )
                 self.scoreque.extend(self.scores[term_ids])
@@ -334,14 +334,14 @@ class Actor_Critic_Policy_Gradient_Family(object):
         for steps in pbar:
             self.eplen += 1
             actions = self.actions(state)
-            next_state, reward, terminal, truncated, info = self.env.step(self.conv_action(actions))
+            next_state, reward, terminated, truncated, info = self.env.step(self.conv_action(actions))
             next_state = [np.expand_dims(next_state, axis=0)]
-            self.buffer.add(state, actions[0], reward, next_state, terminal, truncated)
+            self.buffer.add(state, actions[0], reward, next_state, terminated, truncated)
             if have_original_reward:
                 self.original_score[0] += info["original_reward"]
             self.scores[0] += reward
             state = next_state
-            if terminal or truncated:
+            if terminated or truncated:
                 self.scoreque.append(self.scores[0])
                 if self.summary:
                     if have_original_reward:
@@ -390,8 +390,8 @@ class Actor_Critic_Policy_Gradient_Family(object):
             (
                 real_nextstates,
                 rewards,
-                dones,
-                terminals,
+                terminateds,
+                truncated,
                 infos,
                 end_states,
                 end_idx,
@@ -425,7 +425,7 @@ class Actor_Critic_Policy_Gradient_Family(object):
                     self.summary.add_scalar("env/episode len", np.mean(self.eplen[end_idx]), steps)
                     self.summary.add_scalar(
                         "env/time over",
-                        np.mean(1 - dones[end_idx].astype(np.float32)),
+                        np.mean(1 - terminateds[end_idx].astype(np.float32)),
                         steps,
                     )
                 self.scoreque.extend(self.scores[end_idx])
@@ -436,8 +436,8 @@ class Actor_Critic_Policy_Gradient_Family(object):
                     actions,
                     np.expand_dims(rewards, axis=1),
                     [nxtstates],
-                    np.expand_dims(dones, axis=1),
-                    np.expand_dims(terminals, axis=1),
+                    np.expand_dims(terminateds, axis=1),
+                    np.expand_dims(truncated, axis=1),
                 )
             else:
                 self.buffer.add(
@@ -445,8 +445,8 @@ class Actor_Critic_Policy_Gradient_Family(object):
                     actions,
                     np.expand_dims(rewards, axis=1),
                     [real_nextstates],
-                    np.expand_dims(dones, axis=1),
-                    np.expand_dims(terminals, axis=1),
+                    np.expand_dims(terminateds, axis=1),
+                    np.expand_dims(truncated, axis=1),
                 )
             state = real_nextstates
 
@@ -486,12 +486,12 @@ class Actor_Critic_Policy_Gradient_Family(object):
         for i in range(episode):
             state, info = Render_env.reset()
             state = [np.expand_dims(state, axis=0)]
-            terminal = False
+            terminated = False
             truncated = False
             episode_rew = 0
-            while not (terminal or truncated):
+            while not (terminated or truncated):
                 actions = self.actions(state)
-                observation, reward, terminal, truncated, info = Render_env.step(
+                observation, reward, terminated, truncated, info = Render_env.step(
                     actions[0][0] if self.action_type == "discrete" else actions[0]
                 )
                 state = [np.expand_dims(observation, axis=0)]
@@ -505,12 +505,12 @@ class Actor_Critic_Policy_Gradient_Family(object):
         for i in range(episode):
             state, info = Render_env.reset()
             state = [np.expand_dims(state, axis=0)]
-            terminal = False
+            terminated = False
             truncated = False
             episode_rew = 0
-            while not (terminal or truncated):
+            while not (terminated or truncated):
                 actions = self.actions(state)
-                observation, reward, terminal, truncated, info = Render_env.step(
+                observation, reward, terminated, truncated, info = Render_env.step(
                     actions[0][0] if self.action_type == "discrete" else actions[0]
                 )
                 state = [np.expand_dims(observation, axis=0)]

@@ -180,15 +180,15 @@ class SAC(Deteministic_Policy_Gradient_Family):
         actions,
         rewards,
         nxtobses,
-        dones,
+        terminateds,
         weights=1,
         indexes=None,
     ):
         obses = convert_jax(obses)
         nxtobses = convert_jax(nxtobses)
-        not_dones = 1.0 - dones
+        not_terminateds = 1.0 - terminateds
         key1, key2 = jax.random.split(key, 2)
-        targets = self._target(params, target_params, rewards, nxtobses, not_dones, key1, ent_coef)
+        targets = self._target(params, target_params, rewards, nxtobses, not_terminateds, key1, ent_coef)
         (total_loss, (critic_loss, actor_loss, abs_error, log_prob),), grad = jax.value_and_grad(
             self._loss, has_aux=True
         )(params, obses, actions, targets, weights, key2, step, ent_coef)
@@ -232,13 +232,13 @@ class SAC(Deteministic_Policy_Gradient_Family):
         )
         return total_loss, (critic_loss, actor_loss, jnp.abs(error1), log_prob)
 
-    def _target(self, params, target_params, rewards, nxtobses, not_dones, key, ent_coef):
+    def _target(self, params, target_params, rewards, nxtobses, not_terminateds, key, ent_coef):
         policy, log_prob = self._get_update_data(params, self.preproc(params, key, nxtobses), key)
         q1_pi, q2_pi = self.critic(
             target_params, key, self.preproc(target_params, key, nxtobses), policy
         )
         next_q = jnp.minimum(q1_pi, q2_pi) - ent_coef * log_prob
-        return (not_dones * next_q * self._gamma) + rewards
+        return (not_terminateds * next_q * self._gamma) + rewards
 
     def learn(
         self,

@@ -4,7 +4,7 @@ import numpy as np
 import optax
 
 from jax_baselines.A2C.base_class import Actor_Critic_Policy_Gradient_Family
-from jax_baselines.common.utils import convert_jax, discount_with_terminal
+from jax_baselines.common.utils import convert_jax, discount_with_terminated
 
 
 class A2C(Actor_Critic_Policy_Gradient_Family):
@@ -96,7 +96,7 @@ class A2C(Actor_Critic_Policy_Gradient_Family):
         actions,
         rewards,
         ep_idx,
-        terminals,
+        terminateds,
     ):
         obses = [jnp.stack(zo) for zo in zip(*obses)]  # (worker, n + 1, *obs_shape)
         states = [jnp.stack(s) for s in zip(*states)]  # (worker, n + 1, *state_shape)
@@ -105,15 +105,16 @@ class A2C(Actor_Critic_Policy_Gradient_Family):
         ep_idx = jnp.stack(ep_idx)  # (worker, n+1)
         filled = jnp.not_equal(ep_idx[:, :-1], -1).astype(jnp.float32)  # (worker, n)
         dones = jnp.not_equal(ep_idx[:, 1:], ep_idx[:, :-1])  # (worker, n)
-        terminals = jnp.stack(terminals)  # (worker, n)
+        terminateds = jnp.stack(terminateds)  # (worker, n)
+        truncateds = jnp.logical_and(dones, jnp.logical_not(terminateds))  # (worker, n)
         obses = convert_jax(obses)  # (worker, n + 1, *obs_shape)
         value = jax.vmap(self.critic, in_axes=(None, None, 0))(
             params,
             key,
             jax.vmap(self.preproc, in_axes=(None, None, 0))(params, key, obses),
         )
-        targets = jax.vmap(discount_with_terminal, in_axes=(0, 0, 0, 0, None))(
-            rewards, dones, terminals, value[:, 1:], self.gamma
+        targets = jax.vmap(discount_with_terminated, in_axes=(0, 0, 0, 0, None))(
+            rewards, terminateds, truncateds, value[:, 1:], self.gamma
         )
         obses = [jnp.vstack(o[:, :-1]) for o in obses]
         actions = jnp.vstack(actions)

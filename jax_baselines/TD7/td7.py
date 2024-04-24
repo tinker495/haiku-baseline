@@ -235,13 +235,13 @@ class TD7(Deteministic_Policy_Gradient_Family):
         actions,
         rewards,
         nxtobses,
-        dones,
+        terminateds,
         weights=1,
         indexes=None,
     ):
         obses = convert_jax(obses)
         nxtobses = convert_jax(nxtobses)
-        not_dones = 1.0 - dones
+        not_terminateds = 1.0 - terminateds
 
         repr_loss, grad = jax.value_and_grad(self._encoder_loss)(
             encoder_params, obses, nxtobses, actions, key
@@ -252,7 +252,7 @@ class TD7(Deteministic_Policy_Gradient_Family):
         encoder_params = optax.apply_updates(encoder_params, updates)
 
         targets = self._target(
-            fixed_encoder_target_params, target_params, rewards, nxtobses, not_dones, key
+            fixed_encoder_target_params, target_params, rewards, nxtobses, not_terminateds, key
         )
         params["min_value"] = jnp.minimum(jnp.min(targets), params["min_value"])
         params["max_value"] = jnp.maximum(jnp.max(targets), params["max_value"])
@@ -315,7 +315,7 @@ class TD7(Deteministic_Policy_Gradient_Family):
         return total_loss, (critic_loss, actor_loss, priority)
 
     def _target(
-        self, fixed_encoder_target_params, target_params, rewards, nxtobses, not_dones, key
+        self, fixed_encoder_target_params, target_params, rewards, nxtobses, not_terminateds, key
     ):
         next_feature = self.preproc(fixed_encoder_target_params, key, nxtobses)
         fixed_target_zs = self.encoder(fixed_encoder_target_params, key, next_feature)
@@ -342,7 +342,7 @@ class TD7(Deteministic_Policy_Gradient_Family):
         next_q = jnp.clip(
             jnp.minimum(q1, q2), target_params["min_value"], target_params["max_value"]
         )
-        return rewards + not_dones * self.gamma * next_q
+        return rewards + not_terminateds * self.gamma * next_q
 
     def learn(
         self,
@@ -377,12 +377,12 @@ class TD7(Deteministic_Policy_Gradient_Family):
         for steps in pbar:
             self.eplen += 1
             actions = self.actions(state, steps)
-            next_state, reward, terminal, truncated, info = self.env.step(actions[0])
+            next_state, reward, terminated, truncated, info = self.env.step(actions[0])
             next_state = [np.expand_dims(next_state, axis=0)]
-            self.replay_buffer.add(state, actions[0], reward, next_state, terminal, truncated)
+            self.replay_buffer.add(state, actions[0], reward, next_state, terminated, truncated)
             self.scores[0] += reward
             state = next_state
-            if terminal or truncated:
+            if terminated or truncated:
                 self.end_episode(steps, self.scores[0], self.eplen[0])
                 self.scores[0] = 0
                 self.eplen[0] = 0
@@ -404,16 +404,16 @@ class TD7(Deteministic_Policy_Gradient_Family):
         for ep in range(self.eval_eps):
             state, info = self.eval_env.reset()
             state = [np.expand_dims(state, axis=0)]
-            terminal = False
+            terminated = False
             truncated = False
             eplen = 0
-            while not terminal and not truncated:
+            while not terminated and not truncated:
                 actions = self.actions(
                     state, self.learning_starts + 1, use_checkpoint=True, exploration=False
                 )
-                next_state, reward, terminal, truncated, info = self.eval_env.step(actions[0])
+                next_state, reward, terminated, truncated, info = self.eval_env.step(actions[0])
                 next_state = [np.expand_dims(next_state, axis=0)]
-                # self.replay_buffer.add(state, actions[0], reward, next_state, terminal, truncated)
+                # self.replay_buffer.add(state, actions[0], reward, next_state, terminated, truncated)
                 total_reward[ep] += reward
                 state = next_state
                 eplen += 1

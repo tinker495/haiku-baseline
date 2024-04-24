@@ -123,7 +123,7 @@ class APE_X_TD3(Ape_X_Deteministic_Policy_Gradient_Family):
                 actions,
                 rewards,
                 nxtobses,
-                dones,
+                terminateds,
                 key,
             ):
                 size = obses[0].shape[0]
@@ -142,7 +142,7 @@ class APE_X_TD3(Ape_X_Deteministic_Policy_Gradient_Family):
                 next_q = jnp.minimum(q1, q2)
                 feature = preproc(params, key, convert_jax(obses))
                 q_values1, q_values2 = critic(params, key, feature, actions)
-                target = rewards + gamma * (1.0 - dones) * next_q
+                target = rewards + gamma * (1.0 - terminateds) * next_q
                 td1_error = jnp.abs(q_values1 - target)
                 return jnp.squeeze(td1_error)
 
@@ -195,27 +195,27 @@ class APE_X_TD3(Ape_X_Deteministic_Policy_Gradient_Family):
         actions,
         rewards,
         nxtobses,
-        dones,
+        terminateds,
         weights=1,
         indexes=None,
     ):
         obses = convert_jax(obses)
         nxtobses = convert_jax(nxtobses)
         actions = actions.astype(jnp.int32)
-        not_dones = 1.0 - dones
+        not_terminateds = 1.0 - terminateds
         batch_idxes = jnp.arange(self.batch_size).reshape(-1, self.mini_batch_size)
         obses_batch = [o[batch_idxes] for o in obses]
         actions_batch = actions[batch_idxes]
         rewards_batch = rewards[batch_idxes]
         nxtobses_batch = [o[batch_idxes] for o in nxtobses]
-        not_dones_batch = not_dones[batch_idxes]
+        not_terminateds_batch = not_terminateds[batch_idxes]
         weights_batch = weights[batch_idxes]
 
         def f(carry, data):
             params, opt_state, key, step = carry
-            obses, actions, rewards, nxtobses, not_dones, weights = data
+            obses, actions, rewards, nxtobses, not_terminateds, weights = data
             key, *subkeys = jax.random.split(key, 3)
-            targets = self._target(target_params, rewards, nxtobses, not_dones, subkeys[0])
+            targets = self._target(target_params, rewards, nxtobses, not_terminateds, subkeys[0])
             (total_loss, (critic_loss, actor_loss, abs_error)), grad = jax.value_and_grad(
                 self._loss, has_aux=True
             )(params, obses, actions, targets, weights, subkeys[1], step)
@@ -237,7 +237,7 @@ class APE_X_TD3(Ape_X_Deteministic_Policy_Gradient_Family):
                 actions_batch,
                 rewards_batch,
                 nxtobses_batch,
-                not_dones_batch,
+                not_terminateds_batch,
                 weights_batch,
             ),
         )
@@ -268,7 +268,7 @@ class APE_X_TD3(Ape_X_Deteministic_Policy_Gradient_Family):
         )
         return total_loss, (critic_loss, actor_loss, jnp.abs(error1))
 
-    def _target(self, target_params, rewards, nxtobses, not_dones, key):
+    def _target(self, target_params, rewards, nxtobses, not_terminateds, key):
         next_feature = self.preproc(target_params, key, nxtobses)
         next_action = jnp.clip(
             self.actor(target_params, key, next_feature)
@@ -283,7 +283,7 @@ class APE_X_TD3(Ape_X_Deteministic_Policy_Gradient_Family):
         )
         q1, q2 = self.critic(target_params, key, next_feature, next_action)
         next_q = jnp.minimum(q1, q2)
-        return (not_dones * next_q * self._gamma) + rewards
+        return (not_terminateds * next_q * self._gamma) + rewards
 
     def learn(
         self,

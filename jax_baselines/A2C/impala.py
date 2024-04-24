@@ -121,8 +121,8 @@ class IMPALA(IMPALA_Family):
         mu_log_prob,
         rewards,
         nxtobses,
-        dones,
-        terminals,
+        terminateds,
+        truncateds,
     ):
         # ((b x h x w x c), (b x n)) x x -> (x x b x h x w x c), (x x b x n)
         obses = [jnp.stack(zo) for zo in zip(*obses)]
@@ -130,8 +130,8 @@ class IMPALA(IMPALA_Family):
         actions = jnp.stack(actions)
         mu_log_prob = jnp.stack(mu_log_prob)
         rewards = jnp.stack(rewards)
-        dones = jnp.stack(dones)
-        terminals = jnp.stack(terminals)
+        terminateds = jnp.stack(terminateds)
+        truncateds = jnp.stack(truncateds)
         obses = convert_jax(obses)
         nxtobses = convert_jax(nxtobses)
         feature = jax.vmap(self.preproc, in_axes=(None, None, 0))(params, key, obses)
@@ -150,15 +150,15 @@ class IMPALA(IMPALA_Family):
         rho = jnp.minimum(rho_raw, self.rho_max)
         c_t = self.lamda * jnp.minimum(rho, self.cut_max)
         vs = jax.vmap(get_vtrace, in_axes=(0, 0, 0, 0, 0, 0, 0, None))(
-            rewards, rho, c_t, dones, terminals, value, next_value, self.gamma
+            rewards, rho, c_t, terminateds, truncateds, value, next_value, self.gamma
         )
         vs_t_plus_1 = jax.vmap(
             lambda v, nv, t: jnp.where(
                 t == 1, nv, jnp.concatenate([v[1:], jnp.expand_dims(nv[-1], axis=-1)])
             ),
             in_axes=(0, 0, 0),
-        )(vs, next_value, terminals)
-        adv = rewards + self.gamma * (1.0 - dones) * vs_t_plus_1 - value
+        )(vs, next_value, truncateds)
+        adv = rewards + self.gamma * (1.0 - terminateds) * vs_t_plus_1 - value
         # adv = (adv - jnp.mean(adv,keepdims=True)) / (jnp.std(adv,keepdims=True) + 1e-6)
         adv = rho * adv
         obses = [jnp.vstack(o) for o in obses]
@@ -178,8 +178,8 @@ class IMPALA(IMPALA_Family):
         mu_log_prob,
         rewards,
         nxtobses,
-        dones,
-        terminals,
+        terminateds,
+        truncateds,
     ):
         obses, actions, vs, rho, adv = self.preprocess(
             params,
@@ -189,8 +189,8 @@ class IMPALA(IMPALA_Family):
             mu_log_prob,
             rewards,
             nxtobses,
-            dones,
-            terminals,
+            terminateds,
+            truncateds,
         )
         (total_loss, (critic_loss, actor_loss, entropy_loss),), grad = jax.value_and_grad(
             self._loss, has_aux=True

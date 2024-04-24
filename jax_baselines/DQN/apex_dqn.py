@@ -117,7 +117,7 @@ class APE_X_DQN(Ape_X_Family):
                 key_seq = repeat(None)
 
             def get_abs_td_error(
-                model, preproc, params, obses, actions, rewards, nxtobses, dones, key
+                model, preproc, params, obses, actions, rewards, nxtobses, terminateds, key
             ):
                 q_values = jnp.take_along_axis(
                     model(params, key, preproc(params, key, convert_jax(obses))),
@@ -129,7 +129,7 @@ class APE_X_DQN(Ape_X_Family):
                     axis=1,
                     keepdims=True,
                 )
-                target = rewards + gamma * (1.0 - dones) * next_q_values
+                target = rewards + gamma * (1.0 - terminateds) * next_q_values
                 td_error = q_values - target
                 return jnp.squeeze(jnp.abs(td_error)) + prioritized_replay_eps
 
@@ -193,28 +193,28 @@ class APE_X_DQN(Ape_X_Family):
         actions,
         rewards,
         nxtobses,
-        dones,
+        terminateds,
         weights=1,
         indexes=None,
     ):
         obses = convert_jax(obses)
         nxtobses = convert_jax(nxtobses)
         actions = actions.astype(jnp.int32)
-        not_dones = 1.0 - dones
+        not_terminateds = 1.0 - terminateds
         batch_idxes = jnp.arange(self.batch_size).reshape(-1, self.mini_batch_size)
         obses_batch = [o[batch_idxes] for o in obses]
         actions_batch = actions[batch_idxes]
         rewards_batch = rewards[batch_idxes]
         nxtobses_batch = [o[batch_idxes] for o in nxtobses]
-        not_dones_batch = not_dones[batch_idxes]
+        not_terminateds_batch = not_terminateds[batch_idxes]
         weights_batch = weights[batch_idxes]
 
         def f(carry, data):
             params, opt_state, key = carry
-            obses, actions, rewards, nxtobses, not_dones, weights = data
+            obses, actions, rewards, nxtobses, not_terminateds, weights = data
             key, *subkeys = jax.random.split(key, 3)
             targets = self._target(
-                params, target_params, obses, actions, rewards, nxtobses, not_dones, subkeys[0]
+                params, target_params, obses, actions, rewards, nxtobses, not_terminateds, subkeys[0]
             )
             (loss, abs_error), grad = jax.value_and_grad(self._loss, has_aux=True)(
                 params, obses, actions, targets, weights, subkeys[1]
@@ -231,7 +231,7 @@ class APE_X_DQN(Ape_X_Family):
                 actions_batch,
                 rewards_batch,
                 nxtobses_batch,
-                not_dones_batch,
+                not_terminateds_batch,
                 weights_batch,
             ),
         )
@@ -248,7 +248,7 @@ class APE_X_DQN(Ape_X_Family):
             error
         )  # remove weight multiply cpprb weight is something wrong
 
-    def _target(self, params, target_params, obses, actions, rewards, nxtobses, not_dones, key):
+    def _target(self, params, target_params, obses, actions, rewards, nxtobses, not_terminateds, key):
         next_q = self.get_q(target_params, nxtobses, key)
 
         if self.munchausen:
@@ -260,7 +260,7 @@ class APE_X_DQN(Ape_X_Family):
                 next_sub_q, tau_log_pi_next = q_log_pi(next_q, self.munchausen_entropy_tau)
             pi_next = jax.nn.softmax(next_sub_q / self.munchausen_entropy_tau)
             next_vals = (
-                jnp.sum(pi_next * (next_q - tau_log_pi_next), axis=1, keepdims=True) * not_dones
+                jnp.sum(pi_next * (next_q - tau_log_pi_next), axis=1, keepdims=True) * not_terminateds
             )
 
             q_k_targets = self.get_q(target_params, obses, key)
@@ -276,7 +276,7 @@ class APE_X_DQN(Ape_X_Family):
                 next_actions = jnp.argmax(self.get_q(params, nxtobses, key), axis=1, keepdims=True)
             else:
                 next_actions = jnp.argmax(next_q, axis=1, keepdims=True)
-            next_vals = not_dones * jnp.take_along_axis(next_q, next_actions, axis=1)
+            next_vals = not_terminateds * jnp.take_along_axis(next_q, next_actions, axis=1)
         return (next_vals * self._gamma) + rewards
 
     def learn(

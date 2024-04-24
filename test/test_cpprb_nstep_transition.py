@@ -23,7 +23,7 @@ for i in range(11):
 transition = rb.get_buffer()
 rb.clear()
 
-for i in range(len(transition["done"])):
+for i in range(len(transition["terminated"])):
     st = ""
     for k in transition.keys():
         st += f"{k}: {transition[k][i]}, "

@@ -294,14 +294,14 @@ class SPR(Q_Network_Family):
         obses,
         actions,
         rewards,
-        dones,
+        terminateds,
         filled,
         weights=1,
         indexes=None,
     ):
         obses = convert_jax(obses)
         actions = actions.astype(jnp.int32)
-        not_dones = 1.0 - dones
+        not_terminateds = 1.0 - terminateds
         obses = [
             jax.lax.cond(
                 len(o.shape) >= 5,
@@ -322,7 +322,7 @@ class SPR(Q_Network_Family):
         parsed_actions = jnp.reshape(actions[:, 0], (-1, 1, 1))
         rewards = jnp.reshape(rewards[:, : self.n_step], (-1, self.n_step))
         parsed_rewards = jnp.sum(rewards * self._gamma * parsed_filled, axis=1, keepdims=True)
-        parsed_not_dones = jnp.take_along_axis(not_dones, last_idxs, axis=1)
+        parsed_not_terminateds = jnp.take_along_axis(not_terminateds, last_idxs, axis=1)
         parsed_gamma = (
             jnp.take_along_axis(jnp.expand_dims(self._gamma, 0), last_idxs, axis=1) * self.gamma
         )
@@ -333,7 +333,7 @@ class SPR(Q_Network_Family):
             parsed_actions,
             parsed_rewards,
             parsed_nxtobses,
-            parsed_not_dones,
+            parsed_not_terminateds,
             parsed_gamma,
             key,
         )
@@ -440,7 +440,7 @@ class SPR(Q_Network_Family):
         return jnp.mean(loss)
 
     def _target(
-        self, params, target_params, obses, actions, rewards, nxtobses, not_dones, gammas, key
+        self, params, target_params, obses, actions, rewards, nxtobses, not_terminateds, gammas, key
     ):
         next_q = self.get_q(target_params, nxtobses, key)
         if self.double_q:
@@ -471,7 +471,7 @@ class SPR(Q_Network_Family):
             )
         else:
             next_categorial = self.categorial_bar
-        target_categorial = gammas * not_dones * next_categorial + rewards  # [32, 51]
+        target_categorial = gammas * not_terminateds * next_categorial + rewards  # [32, 51]
         Tz = jnp.clip(
             target_categorial, self.categorial_min, self.categorial_max
         )  # clip to range of bar

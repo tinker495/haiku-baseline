@@ -8,7 +8,7 @@ from ray.util.queue import Queue
 
 batch = namedtuple(
     "batch_tuple",
-    ["obses", "actions", "mu_log_prob", "rewards", "nxtobses", "dones", "terminals"],
+    ["obses", "actions", "mu_log_prob", "rewards", "nxtobses", "terminateds", "truncateds"],
 )
 
 
@@ -23,7 +23,7 @@ class EpochBuffer:
     def __len__(self):
         return self.buffer.get_stored_size()
 
-    def add(self, obs_t, action, log_prob, reward, nxtobs_t, done, terminal):
+    def add(self, obs_t, action, log_prob, reward, nxtobs_t, terminated, truncted=False):
         obsdict = dict(zip(self.obsdict.keys(), [o for o in obs_t]))
         nextobsdict = dict(zip(self.nextobsdict.keys(), [no for no in nxtobs_t]))
         self.buffer.add(
@@ -32,10 +32,10 @@ class EpochBuffer:
             log_prob=log_prob,
             reward=reward,
             **nextobsdict,
-            done=done,
-            terminal=terminal
+            terminated=terminated,
+            truncted=truncted
         )
-        if done or terminal:
+        if terminated or terminated:
             self.buffer.on_episode_end()
 
     def get_buffer(self):
@@ -46,8 +46,8 @@ class EpochBuffer:
             trans["log_prob"],
             trans["reward"],
             [trans[o] for o in self.nextobsdict.keys()],
-            trans["done"],
-            trans["terminal"],
+            trans["terminated"],
+            trans["truncted"],
         )
         return transitions
 
@@ -122,8 +122,8 @@ class ImpalaBuffer:
             "log_prob": {},
             "reward": {},
             **self.nextobsdict,
-            "done": {},
-            "terminal": {},
+            "terminated": {},
+            "truncted": {},
         }
 
         self.queue = Queue(maxsize=max(actor_num * 2, replay_size))

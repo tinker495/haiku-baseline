@@ -59,8 +59,8 @@ class Buffer(object):
             self.buffer[k][self.roll_idx] = data
         self.buffer["ep_idx"][self.next_roll_idx] = self.ep_idx
 
-    def on_episode_end(self, terminal):
-        if not terminal:
+    def on_episode_end(self, truncated):
+        if truncated:
             self.update_idx()
             self.buffer["ep_idx"][self.roll_idx] = -1
         self.ep_idx += 1
@@ -119,7 +119,7 @@ class EpochBuffer(object):
             for _ in range(worker_size)
         ]
 
-    def add(self, obs_t, action, reward, nxtobs_t, done, terminal, state_t=[], nextstate_t=[]):
+    def add(self, obs_t, action, reward, nxtobs_t, terminated, trucated, state_t=[], nextstate_t=[]):
         for w in range(self.worker_size):
             obs = [o[w] for o in obs_t]
             nxtobs = [o[w] for o in nxtobs_t]
@@ -136,10 +136,10 @@ class EpochBuffer(object):
                 next_state=nextstate,
                 action=action[w],
                 reward=reward[w],
-                terminal=terminal[w],
+                terminated=terminated[w],
             )
-            if done[w] or terminal[w]:
-                self.local_buffers[w].on_episode_end(terminal[w])
+            if terminated[w] or trucated[w]:
+                self.local_buffers[w].on_episode_end(trucated[w])
 
     def get_buffer(self):
         transitions = {
@@ -147,8 +147,8 @@ class EpochBuffer(object):
             "states": [],
             "actions": [],
             "rewards": [],
-            "ep_idx": [],
-            "terminals": [],
+            "ep_idxs": [],
+            "terminateds": [],
         }
         for w in range(self.worker_size):
             trans = self.local_buffers[w].get_all_transitions()
@@ -156,7 +156,7 @@ class EpochBuffer(object):
             transitions["states"].append([trans[s] for s in self.state_dict.keys()])
             transitions["actions"].append(trans["action"])
             transitions["rewards"].append(trans["reward"])
-            transitions["ep_idx"].append(trans["ep_idx"])
-            transitions["terminals"].append(trans["terminal"])
+            transitions["ep_idxs"].append(trans["ep_idx"])
+            transitions["terminateds"].append(trans["terminated"])
             self.local_buffers[w].clear()
         return transitions

@@ -104,13 +104,13 @@ class PPO(Actor_Critic_Policy_Gradient_Family):
 
         return critic_loss
 
-    def _preprocess(self, params, key, obses, actions, rewards, nxtobses, dones, terminals):
+    def _preprocess(self, params, key, obses, actions, rewards, nxtobses, terminateds, truncateds):
         obses = [jnp.stack(zo) for zo in zip(*obses)]
         nxtobses = [jnp.stack(zo) for zo in zip(*nxtobses)]
         actions = jnp.stack(actions)
         rewards = jnp.stack(rewards)
-        dones = jnp.stack(dones)
-        terminals = jnp.stack(terminals)
+        terminateds = jnp.stack(terminateds)
+        truncateds = jnp.stack(truncateds)
         obses = convert_jax(obses)
         nxtobses = convert_jax(nxtobses)
         feature = jax.vmap(self.preproc, in_axes=(None, None, 0))(params, key, obses)
@@ -126,7 +126,7 @@ class PPO(Actor_Critic_Policy_Gradient_Family):
             key,
         )
         adv = jax.vmap(get_gaes, in_axes=(0, 0, 0, 0, 0, None, None))(
-            rewards, dones, terminals, value, next_value, self.gamma, self.lamda
+            rewards, terminateds, truncateds, value, next_value, self.gamma, self.lamda
         )
         obses = [jnp.vstack(o) for o in obses]
         actions = jnp.vstack(actions)
@@ -147,11 +147,11 @@ class PPO(Actor_Critic_Policy_Gradient_Family):
         actions,
         rewards,
         nxtobses,
-        dones,
-        terminals,
+        terminateds,
+        truncateds,
     ):
         obses, actions, old_values, targets, act_prob, adv = self._preprocess(
-            params, key, obses, actions, rewards, nxtobses, dones, terminals
+            params, key, obses, actions, rewards, nxtobses, terminateds, truncateds
         )
 
         def i_f(idx, vals):

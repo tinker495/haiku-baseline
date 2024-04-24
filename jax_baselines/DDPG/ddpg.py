@@ -154,14 +154,14 @@ class DDPG(Deteministic_Policy_Gradient_Family):
         actions,
         rewards,
         nxtobses,
-        dones,
+        terminateds,
         weights=1,
         indexes=None,
     ):
         obses = convert_jax(obses)
         nxtobses = convert_jax(nxtobses)
-        not_dones = 1.0 - dones
-        targets = self._target(target_params, rewards, nxtobses, not_dones, key)
+        not_terminateds = 1.0 - terminateds
+        targets = self._target(target_params, rewards, nxtobses, not_terminateds, key)
         (total_loss, (critic_loss, actor_loss, abs_error)), grad = jax.value_and_grad(
             self._loss, has_aux=True
         )(params, obses, actions, targets, weights, key)
@@ -184,11 +184,11 @@ class DDPG(Deteministic_Policy_Gradient_Family):
         total_loss = critic_loss + actor_loss
         return total_loss, (critic_loss, -actor_loss, jnp.abs(error))
 
-    def _target(self, target_params, rewards, nxtobses, not_dones, key):
+    def _target(self, target_params, rewards, nxtobses, not_terminateds, key):
         next_feature = self.preproc(target_params, key, nxtobses)
         next_action = self.actor(target_params, key, next_feature)
         next_q = self.critic(target_params, key, next_feature, next_action)
-        return (not_dones * next_q * self._gamma) + rewards
+        return (not_terminateds * next_q * self._gamma) + rewards
 
     def learn(
         self,
