@@ -50,13 +50,14 @@ class Buffer(object):
                 self.buffer[k][self.roll_idx] = obs[idx]
             for idx, k in enumerate(self.state_dict.keys()):
                 self.buffer[k][self.roll_idx] = state[idx]
+            self.buffer["ep_idx"][self.roll_idx] = self.ep_idx
         for idx, k in enumerate(self.obs_dict.keys()):
             self.buffer[k][self.next_roll_idx] = next_obs[idx]
         for idx, k in enumerate(self.state_dict.keys()):
             self.buffer[k][self.next_roll_idx] = next_state[idx]
         for k, data in kwargs.items():
             self.buffer[k][self.roll_idx] = data
-        self.buffer["ep_idx"][self.roll_idx] = self.ep_idx
+        self.buffer["ep_idx"][self.next_roll_idx] = self.ep_idx
 
     def on_episode_end(self, terminal):
         if not terminal:
