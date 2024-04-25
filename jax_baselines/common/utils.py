@@ -59,7 +59,7 @@ def discounted(rewards, gamma=0.99):  # lfilter([1],[1,-gamma],x[::-1])[::-1]
 def discount_with_terminated(rewards, terminateds, truncateds, next_values, gamma):
     def f(ret, info):
         reward, term, trunc, nextval = info
-        ret = reward + gamma * (ret * (1.0 - trunc) + nextval * (1.0 - term) * trunc)
+        ret = reward + gamma * (1.0 - term) * (ret * (1.0 - trunc) + nextval * trunc)
         return ret, ret
 
     truncateds.at[-1].set(jnp.ones((1,), dtype=jnp.float32))

@@ -19,7 +19,7 @@ class Buffer(object):
             buffer[name] = np.zeros((size + 1, *data["shape"]), dtype=data["dtype"])
         for name, data in env_dict.items():
             buffer[name] = np.zeros((size, *data["shape"]), dtype=data["dtype"])
-        buffer["terminal"] = np.ones((size, 1), dtype=np.bool_)
+        buffer["terminated"] = np.ones((size, 1), dtype=np.bool_)
         buffer["ep_idx"] = np.ones((size + 1, 1), dtype=np.int32) * -1
         return buffer
 
@@ -119,7 +119,9 @@ class EpochBuffer(object):
             for _ in range(worker_size)
         ]
 
-    def add(self, obs_t, action, reward, nxtobs_t, terminated, trucated, state_t=[], nextstate_t=[]):
+    def add(
+        self, obs_t, action, reward, nxtobs_t, terminated, trucated, state_t=[], nextstate_t=[]
+    ):
         for w in range(self.worker_size):
             obs = [o[w] for o in obs_t]
             nxtobs = [o[w] for o in nxtobs_t]
