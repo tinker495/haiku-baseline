@@ -90,11 +90,12 @@ if __name__ == "__main__":
 
     if args.algo == "DDPG":
         if args.model_lib == "flax":
-            from model_builder.flax.qnet.iqn_builder import model_builder_maker
+            from model_builder.flax.dpg.ddpg_builder import model_builder_maker
         elif args.model_lib == "haiku":
-            from model_builder.haiku.qnet.iqn_builder import model_builder_maker
+            from model_builder.haiku.dpg.ddpg_builder import model_builder_maker
         agent = DDPG(
             env,
+            model_builder_maker,
             gamma=args.gamma,
             learning_rate=args.learning_rate,
             batch_size=args.batch,
@@ -111,8 +112,13 @@ if __name__ == "__main__":
             optimizer=args.optimizer,
         )
     if args.algo == "TD3":
+        if args.model_lib == "flax":
+            from model_builder.flax.dpg.td3_builder import model_builder_maker
+        elif args.model_lib == "haiku":
+            from model_builder.haiku.dpg.td3_builder import model_builder_maker
         agent = TD3(
             env,
+            model_builder_maker,
             gamma=args.gamma,
             learning_rate=args.learning_rate,
             batch_size=args.batch,
@@ -130,8 +136,13 @@ if __name__ == "__main__":
             optimizer=args.optimizer,
         )
     if args.algo == "SAC":
+        if args.model_lib == "flax":
+            from model_builder.flax.dpg.sac_builder import model_builder_maker
+        elif args.model_lib == "haiku":
+            from model_builder.haiku.dpg.sac_builder import model_builder_maker
         agent = SAC(
             env,
+            model_builder_maker,
             gamma=args.gamma,
             learning_rate=args.learning_rate,
             batch_size=args.batch,
@@ -149,8 +160,13 @@ if __name__ == "__main__":
             optimizer=args.optimizer,
         )
     if args.algo == "TQC":
+        if args.model_lib == "flax":
+            from model_builder.flax.dpg.tqc_builder import model_builder_maker
+        elif args.model_lib == "haiku":
+            from model_builder.haiku.dpg.tqc_builder import model_builder_maker
         agent = TQC(
             env,
+            model_builder_maker,
             gamma=args.gamma,
             learning_rate=args.learning_rate,
             batch_size=args.batch,
@@ -172,10 +188,15 @@ if __name__ == "__main__":
             optimizer=args.optimizer,
         )
     if args.algo == "TD7":
+        if args.model_lib == "flax":
+            from model_builder.flax.dpg.td7_builder import model_builder_maker
+        elif args.model_lib == "haiku":
+            from model_builder.haiku.dpg.td7_builder import model_builder_maker
         eval_env = gym.make(env_name)
         agent = TD7(
             env,
             eval_env,
+            model_builder_maker,
             gamma=args.gamma,
             learning_rate=args.learning_rate,
             batch_size=args.batch,

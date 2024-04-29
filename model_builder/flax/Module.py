@@ -105,3 +105,12 @@ class PreProcess(nn.Module):
     @nn.compact
     def __call__(self, states: List[jnp.ndarray]) -> jnp.ndarray:
         return jnp.concatenate([pre(x) for pre, x in zip(self.embedding, states)], axis=1)
+
+    @property
+    def output_size(self):
+        return sum(
+            [
+                pre(jnp.zeros((1,) + st)).shape[1]
+                for pre, st in zip(self.embedding, self.states_size)
+            ]
+        )

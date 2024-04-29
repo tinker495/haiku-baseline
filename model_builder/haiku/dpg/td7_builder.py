@@ -13,7 +13,7 @@ def avgl1norm(x, epsilon=1e-6):
 
 
 class Encoder(hk.Module):
-    def __init__(self, node=256, hidden_n=1):
+    def __init__(self, node=256, hidden_n=3):
         super().__init__()
         self.node = node
         self.hidden_n = hidden_n
@@ -30,7 +30,7 @@ class Encoder(hk.Module):
 
 
 class Action_Encoder(hk.Module):
-    def __init__(self, node=256, hidden_n=1):
+    def __init__(self, node=256, hidden_n=3):
         super().__init__()
         self.node = node
         self.hidden_n = hidden_n

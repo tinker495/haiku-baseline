@@ -17,12 +17,12 @@ class TD3(Deteministic_Policy_Gradient_Family):
         gamma=0.995,
         learning_rate=3e-4,
         buffer_size=100000,
-        target_action_noise_mul=1.5,
+        target_action_noise_mul=2.0,
         action_noise=0.1,
         train_freq=1,
         gradient_steps=1,
         batch_size=32,
-        policy_delay=3,
+        policy_delay=2,
         n_step=1,
         learning_starts=1000,
         target_network_update_tau=5e-4,
@@ -99,8 +99,8 @@ class TD3(Deteministic_Policy_Gradient_Family):
         if self.learning_starts < steps:
             actions = np.clip(
                 np.asarray(self._get_actions(self.params, obs, None))
-                + np.random.normal(
-                    0, self.action_noise, size=(self.worker_size, self.action_size[0])
+                + self.action_noise * np.random.normal(
+                    0, 1, size=(self.worker_size, self.action_size[0])
                 ),
                 -1,
                 1,
