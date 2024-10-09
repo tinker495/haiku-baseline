@@ -6,17 +6,34 @@ import numpy as np
 from abc import ABC, abstractmethod
 from gymnasium import spaces
 from mlagents_envs.environment import ActionTuple, UnityEnvironment
+from mlagents_envs.registry import default_registry
 from jax_baselines.common.utils import convert_states
 
 def get_env_builder(env_name, **kwargs):
-    if os.path.exists(env_name):
+    print(env_name)
+    print(list(default_registry.keys()))
+    if os.path.isfile(env_name) and os.path.exists(env_name):
+        print("Unity ML-Agents")
         timescale = kwargs.get("timescale", 20)
         capture_frame_rate = kwargs.get("capture_frame_rate", 60)
 
-        def env_builder(worker=None):
-            env = UnityMultiworker(env_name, timescale=timescale, capture_frame_rate=capture_frame_rate)
+        def env_builder(worker=None, worker_id=0):
+            env = UnityMultiworker(env_name, False, worker_id, timescale=timescale, capture_frame_rate=capture_frame_rate)
             return env
-        env_name = env_name.split("/")[-1].split(".")[0]
+        env_name = os.path.splitext(os.path.basename(env_name))[0]
+        env_type = "unity"
+        env_info = {
+            "env_type": env_type,
+            "env_id": env_name,
+        }
+    elif env_name in list(default_registry.keys()):
+        print("Unity ML-Agents")
+        timescale = kwargs.get("timescale", 20)
+        capture_frame_rate = kwargs.get("capture_frame_rate", 60)
+        def env_builder(worker=None, worker_id=0):
+            env = UnityMultiworker(env_name, True, worker_id, timescale=timescale, capture_frame_rate=capture_frame_rate)
+            return env
+        env_name = os.path.splitext(os.path.basename(env_name))[0]
         env_type = "unity"
         env_info = {
             "env_type": env_type,
@@ -66,29 +83,33 @@ class Multiworker(ABC):
 class UnityMultiworker(Multiworker):
 
 
-    def __init__(self, env_id, **kwargs):
-        from mlagents_envs.environment import UnityEnvironment
-        from mlagents_envs.side_channel.engine_configuration_channel import (
-            EngineConfigurationChannel,
-        )
-        from mlagents_envs.side_channel.environment_parameters_channel import (
-            EnvironmentParametersChannel,
-        )
+    def __init__(self, env_id, in_registry=False, worker_id=0, **kwargs):
 
-        engine_configuration_channel = EngineConfigurationChannel()
-        channel = EnvironmentParametersChannel()
-        
-        timescale = kwargs.get("timescale", 20)
-        capture_frame_rate = kwargs.get("capture_frame_rate", 60)
-        engine_configuration_channel.set_configuration_parameters(
-            time_scale=timescale, capture_frame_rate=capture_frame_rate
-        )
-        self.env = UnityEnvironment(
-            file_name=env_id,
-            no_graphics=False,
-            side_channels=[engine_configuration_channel, channel],
-            timeout_wait=10000,
-        )
+        if in_registry:
+            self.env = default_registry[env_id].make(worker_id=worker_id)
+        else:
+            from mlagents_envs.environment import UnityEnvironment
+            from mlagents_envs.side_channel.engine_configuration_channel import (
+                EngineConfigurationChannel,
+            )
+            from mlagents_envs.side_channel.environment_parameters_channel import (
+                EnvironmentParametersChannel,
+            )
+            engine_configuration_channel = EngineConfigurationChannel()
+            channel = EnvironmentParametersChannel()
+            
+            timescale = kwargs.get("timescale", 20)
+            capture_frame_rate = kwargs.get("capture_frame_rate", 60)
+            engine_configuration_channel.set_configuration_parameters(
+                time_scale=timescale, capture_frame_rate=capture_frame_rate
+            )
+            self.env = UnityEnvironment(
+                file_name=env_id,
+                worker_id=worker_id,
+                no_graphics=False,
+                side_channels=[engine_configuration_channel, channel],
+                timeout_wait=10000,
+            )
 
         self.env.reset()
         group_name = list(self.env.behavior_specs.keys())[0]
@@ -132,10 +153,10 @@ class UnityMultiworker(Multiworker):
                 term_rewards = np.append(term_rewards, term.reward)
                 term_interrupted = np.append(term_interrupted, term.interrupted)
         states = convert_states(dec.obs)
-        terminateds = np.full((self.worker_size), False)
-        truncateds = np.full((self.worker_size), False)
+        terminateds = np.full((self.worker_num), False)
+        truncateds = np.full((self.worker_num), False)
         rewards = dec.reward
-        return states, rewards, terminateds, truncateds, dict(), term_obses, term_ids
+        return states, rewards, terminateds, truncateds, [dict() for _ in range(self.worker_num)], term_obses, term_ids
 
 class gymMultiworker(Multiworker):
     def __init__(self, env_id, worker_num=8, render=False):

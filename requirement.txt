@@ -1,6 +1,6 @@
 --find-links https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 requests
-protobuf==3.20
+protobuf==3.20.3
 mlagents_envs
 swig
 gymnasium
@@ -9,17 +9,18 @@ mujoco
 box2d
 box2d-py
 box2d-kengz
-jax[cuda12_pip]
+scipy==1.12.0
+jax[cuda12_pip]==0.4.22
 dm_pix
 dm-haiku
 flax
 equinox
 optax
-numpy==1.26.4
+numpy==1.23.5
 ray[default]
 colabgymrender
 cpprb @ git+https://github.com/tinker495/cpprb.git
 tensorboardX
 imageio-ffmpeg
-opencv-python
+opencv-python==3.4.18.65
 pre-commit

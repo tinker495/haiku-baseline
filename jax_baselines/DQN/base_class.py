@@ -115,16 +115,16 @@ class Q_Network_Family(object):
 
     def get_env_setup(self):
         self.env = self.env_builder(self.num_workers)
-        self.eval_env = self.env_builder(1)
 
         print("----------------------env------------------------")
         if isinstance(self.env, Multiworker):
             print("multiworker environmet")
             env_info = self.env.env_info
-            self.observation_space = [list(env_info["observation_space"].shape)]
-            self.action_size = [env_info["action_space"].n]
+            self.observation_space = env_info["observation_space"]
+            self.action_size = env_info["action_space"]
             self.worker_size = self.env.worker_num
             self.env_type = "Multiworker"
+            self.eval_env = self.env_builder(1, worker_id=1)
 
         elif isinstance(self.env, gym.Env) or isinstance(self.env, gym.Wrapper):
             print("openai gym environmet")
@@ -134,6 +134,7 @@ class Q_Network_Family(object):
             self.action_size = [action_space.n]
             self.worker_size = 1
             self.env_type = "gym"
+            self.eval_env = self.env_builder(1)
 
         print("observation size : ", self.observation_space)
         print("action size : ", self.action_size)
